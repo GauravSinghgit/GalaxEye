@@ -145,7 +145,25 @@ def _make_gauss_noise(tr_cfg: dict) -> A.BasicTransform:
         # fallback: use defaults, no kwargs
         return A.GaussNoise(p=0.3)
 
-
+def _safe_coarse_dropout(size: int) -> A.BasicTransform:
+    """CoarseDropout compatible with albumentations 1.3.x and 1.4+."""
+    try:
+        return A.CoarseDropout(
+            max_holes=4,
+            max_height=size // 8,
+            max_width=size // 8,
+            min_holes=1,
+            fill_value=0,
+            p=0.2,
+        )
+    except TypeError:
+        return A.CoarseDropout(
+            num_holes_range=(1, 4),
+            hole_height_range=(size // 16, size // 8),
+            hole_width_range=(size // 16, size // 8),
+            fill=0,
+            p=0.2,
+        )
 def get_transforms(cfg: dict) -> Tuple[A.Compose, A.Compose]:
     size    = cfg["data"]["image_size"]
     aug_cfg = cfg.get("augmentation", {})
@@ -162,48 +180,57 @@ def get_transforms(cfg: dict) -> Tuple[A.Compose, A.Compose]:
         return transform if tr_cfg.get(flag_key, True) else A.NoOp()
 
     train_transforms = A.Compose([
+        A.Resize(size, size),
 
-    A.Resize(size, size),
+        # ── Geometric (existing) ──────────────────────────────────────────────
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.RandomRotate90(p=0.5),
+        A.ShiftScaleRotate(
+            shift_limit=0.1,
+            scale_limit=0.15,
+            rotate_limit=20,
+            border_mode=0,
+            p=0.5,
+        ),
 
-    A.HorizontalFlip(p=0.5),
+        # ── NEW: simulate co-registration misalignment between EO & SAR ──────
+        A.ElasticTransform(alpha=15, sigma=4, p=0.2),
 
-    A.VerticalFlip(p=0.5),
+       # ── NEW: simulate different scene crop scales ─────────────────────────
+        A.RandomResizedCrop(
+            height=size,
+            width=size,
+            scale=(0.7, 1.0),
+            ratio=(0.9, 1.1),
+            p=0.3,
+        ),
+        # ── Photometric (existing) ────────────────────────────────────────────
+        A.RandomBrightnessContrast(
+            brightness_limit=0.25,
+            contrast_limit=0.25,
+            p=0.5,
+        ),
+        A.RandomGamma(gamma_limit=(80, 120), p=0.3),
+        A.GaussianBlur(blur_limit=3, p=0.2),
+    
+        # ── NEW: simulate different SAR intensity profiles across scenes ──────
+        A.MultiplicativeNoise(
+            multiplier=(0.85, 1.15),
+            elementwise=True,
+            p=0.3,
+        ),
+    
+        
+      # ── NEW: randomly drop regions to force robustness ───────────────────
+        _safe_coarse_dropout(size),
+        
+      # ── Noise (existing + NEW stronger) ──────────────────────────────────
+        A.GaussNoise(var_limit=(10.0, 65.0), p=0.35),
 
-    A.RandomRotate90(p=0.5),
-
-    A.ShiftScaleRotate(
-        shift_limit=0.1,
-        scale_limit=0.15,
-        rotate_limit=20,
-        border_mode=0,
-        p=0.5,
-    ),
-
-    A.RandomBrightnessContrast(
-        brightness_limit=0.25,
-        contrast_limit=0.25,
-        p=0.5,
-    ),
-
-    A.RandomGamma(
-        gamma_limit=(80, 120),
-        p=0.3,
-    ),
-
-    A.GaussianBlur(
-        blur_limit=3,
-        p=0.2,
-    ),
-
-    A.GaussNoise(
-        std_range=(0.02, 0.08),
-        p=0.3,
-    ),
-
-    _normalize,
-
-    ToTensorV2(),
-])
+        _normalize,
+        ToTensorV2(),
+    ])
 
     val_transforms = A.Compose([
         A.Resize(size, size),

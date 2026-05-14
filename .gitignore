@@ -41,3 +41,11 @@ Thumbs.db
 # Misc
 *.log
 inference_output/
+
+# Model weights (too large for GitHub — host on Google Drive/HuggingFace)
+*.pth
+*.pt
+*.ckpt
+
+# Claude worktrees
+.claude/

@@ -1,15 +1,19 @@
 augmentation:
   train:
     brightness_contrast: true
-    brightness_limit: 0.2
-    contrast_limit: 0.2
+    brightness_limit: 0.25       # ← was 0.2
+    contrast_limit: 0.25         # ← was 0.2
     gaussian_noise: true
     horizontal_flip: true
     noise_var_limit:
     - 10
-    - 50
+    - 65                         # ← was 50, slightly wider
     rotate90: true
     vertical_flip: true
+    elastic_transform: true      # ← new flag
+    multiplicative_noise: true   # ← new flag
+    clahe: true                  # ← new flag
+    coarse_dropout: true         # ← new flag
   val:
     horizontal_flip: false
 checkpointing:
@@ -32,16 +36,16 @@ loss:
   dice_weight: 0.5
   focal_alpha: 0.25
   focal_gamma: 2.0
-  primary: bce_dice
-  tversky_alpha: 0.3
-  tversky_beta: 0.7
+  primary: focal_tversky   # ← changed: penalises FN harder, better for unseen scenes
+  tversky_alpha: 0.25      # ← FP weight (lowered)
+  tversky_beta: 0.75       # ← FN weight (raised) — prefers recall over precision
 metrics:
-  threshold: 0.5
+  threshold: 0.94
 model:
   activation: null
   architecture: UnetPlusPlus
   classes: 1
-  encoder: efficientnet-b0
+  encoder: efficientnet-b3
   encoder_weights: imagenet
   in_channels: 4
 optimizer:

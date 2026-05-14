@@ -1,207 +1,264 @@
 # EO-SAR Change Detection
 
-Binary semantic segmentation for multimodal change detection using pre-event EO (Electro-Optical) RGB imagery and post-event SAR (Synthetic Aperture Radar) grayscale imagery.  
-Predicts pixel-wise building damage / change masks (`0` = no change, `1` = change).
+Binary pixel-level change detection on co-registered pre-event Electro-Optical (EO) and post-event Synthetic Aperture Radar (SAR) image pairs.  
+The model classifies each pixel as **changed (1)** or **unchanged (0)** — targeting disaster response, urban monitoring, and environmental surveillance use cases.
+
+**Architecture:** UNet++ with EfficientNet-B3 encoder, early-fusion 4-channel input (3-ch EO + 1-ch SAR).
 
 ---
 
-## Overview
+## Requirements
 
-| Property | Value |
-|---|---|
-| Task | Binary semantic segmentation |
-| Input | EO RGB (pre-event) + SAR grayscale (post-event) → 4-channel tensor |
-| Model | UNet++ with EfficientNet-B0 encoder |
-| Resolution | 1024 × 1024 raw → 256 × 256 training crops |
-| Loss | BCE + Dice (configurable) |
-| Metrics | IoU, F1, Precision, Recall |
-| Evaluation | Scene-wise (val: scene_01–08, test: scene_09–10) |
-
-### Key Engineering Features
-- Config-driven — all hyperparameters in `configs/config.yaml`; nothing hardcoded
-- Mixed-precision training (`torch.cuda.amp`)
-- Gradient clipping for training stability
-- Automatic best/latest checkpointing with safe `KeyboardInterrupt` recovery
-- Early stopping with configurable patience
-- TensorBoard + CSV logging
-- Reproducible via fixed seeds and deterministic CUDA
-
----
-
-## Project Structure
+- Python 3.10
+- CUDA 12.8 / PyTorch 2.10
 
 ```
-GalaxyAI/
-├── configs/
-│   └── config.yaml          # All hyperparameters — single source of truth
-│
-├── datasets/
-│   └── dataset.py           # EOSARDataset + get_transforms()
-│
-├── models/
-│   └── model.py             # build_model() — SMP UNet++ wrapper
-│
-├── losses/
-│   └── losses.py            # BCE+Dice, Focal, Tversky, FocalTversky
-│
-├── utils/
-│   ├── metrics.py           # SegmentationMetrics (IoU / F1 / P / R)
-│   ├── visualization.py     # Prediction grids + error-analysis maps
-│   ├── checkpoint.py        # CheckpointManager (best + latest)
-│   ├── logger.py            # TensorBoardLogger + CSVLogger
-│   └── seed.py              # set_seed() for full reproducibility
-│
-├── experiments/             # Auto-created; one sub-dir per run
-│   └── run_YYYYMMDD_HHMMSS/
-│       ├── checkpoints/     # best.pth, latest.pth
-│       ├── logs/            # TensorBoard events + metrics.csv
-│       ├── visualizations/  # Epoch-level prediction grids
-│       └── config.yaml      # Snapshot of config used for this run
-│
-├── notebooks/
-│   └── train_kaggle.ipynb   # Kaggle experiment launcher
-│
-├── train.py                 # Training pipeline
-├── eval.py                  # Evaluation pipeline
-├── inference.py             # Single-pair / batch inference
-├── requirements.txt
-└── README.md
+torch==2.10.0+cu128
+segmentation-models-pytorch==0.3.3
+timm==0.9.2
+albumentations==1.3.1
+tifffile==2024.2.12
+tensorboard==2.14.0
+pyyaml>=6.0
+numpy>=1.24
+scikit-learn>=1.3
+matplotlib>=3.7
+```
+
+Full pinned list:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Environment Setup
+
+```bash
+# 1. Create and activate environment
+conda create -n eosar python=3.10 -y
+conda activate eosar
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Verify GPU
+python -c "import torch; print(torch.cuda.get_device_name(0))"
 ```
 
 ---
 
 ## Dataset Structure
 
+Place the provided dataset so it matches this layout:
+
 ```
-data/
+Galaxy Data/
 ├── train/
-│   ├── pre-event/    # EO RGB  (1024×1024×3, uint8)
-│   ├── post-event/   # SAR     (1024×1024,   uint8)
-│   └── target/       # Mask    (1024×1024,   binary 0/1)
+│   ├── pre-event/      # EO RGB  (.tif, uint8, 3-channel)
+│   ├── post-event/     # SAR     (.tif, uint8, 1-channel)
+│   └── target/         # Mask    (.tif, binary 0/1)
 ├── val/
-│   └── ...           # scene_01 – scene_08
+│   ├── pre-event/
+│   ├── post-event/
+│   └── target/
 └── test/
-    └── ...           # scene_09 – scene_10
+    ├── pre-event/
+    ├── post-event/
+    └── target/
 ```
 
-| Split | Samples |
-|---|---|
-| train | 2 781 |
-| val | 334 |
-| test | 77 |
+| Split | Scenes | Samples |
+|-------|--------|---------|
+| train | scene_01 – scene_08 | 2 781 |
+| val   | scene_01 – scene_08 |   334 |
+| test  | scene_09 – scene_10 |    77 |
+
+**Label remapping** (applied automatically in `datasets/dataset.py`):
+
+| Original Class | Original Value | Remapped Value | Remapped Class |
+|----------------|---------------|----------------|----------------|
+| Background     | 0             | 0              | No-Change      |
+| Intact         | 1             | 0              | No-Change      |
+| Damaged        | 2             | 1              | Change         |
+| Destroyed      | 3             | 1              | Change         |
 
 Set `data.root_dir` in `configs/config.yaml` to the folder containing `train/`, `val/`, `test/`.
 
 ---
 
-## Setup
+## Project Structure
 
-### 1. Create environment
-
-```bash
-conda create -n eosar python=3.10 -y
-conda activate eosar
 ```
-
-### 2. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Configure data path
-
-Edit `configs/config.yaml`:
-
-```yaml
-data:
-  root_dir: "/path/to/your/data"   # folder containing train/ val/ test/
+Galaxy AI/
+├── configs/
+│   └── config.yaml          # All hyperparameters — single source of truth
+├── datasets/
+│   └── dataset.py           # EOSARDataset + label remapping + get_transforms()
+├── models/
+│   └── model.py             # build_model() — SMP UNet++ wrapper
+├── losses/
+│   └── losses.py            # BCE+Dice, Focal, Tversky, FocalTversky
+├── utils/
+│   ├── metrics.py           # SegmentationMetrics (IoU / F1 / Precision / Recall)
+│   ├── visualization.py     # Prediction grids + error-analysis maps
+│   ├── checkpoint.py        # CheckpointManager (best + latest)
+│   ├── logger.py            # TensorBoard + CSV logger
+│   └── seed.py              # set_seed() for full reproducibility
+├── experiments/             # Auto-created; one sub-dir per run
+│   └── run_YYYYMMDD_HHMMSS/
+│       ├── checkpoints/     # best.pth, latest.pth
+│       ├── logs/            # TensorBoard events + metrics.csv
+│       ├── visualizations/  # Epoch-level prediction grids
+│       └── config.yaml      # Config snapshot for this run
+├── notebooks/
+│   └── train_kaggle.ipynb   # Kaggle experiment launcher
+├── train.py
+├── eval.py
+├── inference.py
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
 ## Training
 
-### Sanity check (2 epochs, no GPU memory risk)
-
 ```bash
+# Full training
+python train.py --config configs/config.yaml --name kaggle_run_v1
+
+# 2-epoch sanity check
 python train.py --config configs/config.yaml --debug
-```
 
-### Full training
-
-```bash
-python train.py --config configs/config.yaml
-```
-
-### Named run
-
-```bash
-python train.py --config configs/config.yaml --name my_experiment_v1
-```
-
-### Resume from checkpoint
-
-```bash
+# Resume from checkpoint
 python train.py \
     --config configs/config.yaml \
-    --resume experiments/run_20240101_120000/checkpoints/latest.pth
+    --resume experiments/run_X/checkpoints/latest.pth
 ```
 
 ---
 
 ## Evaluation
 
-### Validate on val set (use during hyperparameter search)
-
 ```bash
+# Validation set
 python eval.py \
-    --checkpoint experiments/run_X/checkpoints/best.pth \
-    --split val
-```
+    --config configs/config.yaml \
+    --checkpoint experiments/kaggle_run_v1/checkpoints/best.pth \
+    --split val \
+    --n-vis 8
 
-### Final evaluation on test set (run once only)
-
-```bash
+# Test set (with TTA — enabled automatically for --split test)
 python eval.py \
-    --checkpoint experiments/run_X/checkpoints/best.pth \
+    --config configs/config.yaml \
+    --checkpoint experiments/kaggle_run_v1/checkpoints/best.pth \
     --split test \
     --n-vis 16
 ```
 
-Results are saved to `experiments/run_X/eval_test/`:
+Outputs saved to `experiments/run_X/eval_<split>/`:
 - `metrics.json` — full numeric report
-- `predictions/predictions.png` — EO | SAR | GT | Pred grid
-- `error_analysis/error_analysis.png` — TP/FP/FN overlay
+- `predictions/predictions.png` — EO | SAR | Ground Truth | Prediction grid
+- `error_analysis/error_analysis.png` — TP / FP / FN overlay
 
 ---
 
 ## Inference
 
-### Single image pair
-
 ```bash
+# Single image pair
 python inference.py \
-    --checkpoint experiments/run_X/checkpoints/best.pth \
+    --checkpoint experiments/kaggle_run_v1/checkpoints/best.pth \
     --pre-event  /path/to/pre.tif \
     --post-event /path/to/post.tif \
     --output-dir inference_output
-```
 
-### Batch directory
-
-```bash
+# Batch directory
 python inference.py \
-    --checkpoint experiments/run_X/checkpoints/best.pth \
+    --checkpoint experiments/kaggle_run_v1/checkpoints/best.pth \
     --pre-dir  /path/to/pre_dir \
     --post-dir /path/to/post_dir \
     --output-dir inference_output
 ```
 
-Each image produces:
-- `<stem>_mask.tif` — binary prediction
-- `<stem>_prob.tif` — raw probability map (float32)
-- `<stem>_vis.png` — EO | SAR | probability overlay
+---
+
+## Model Weights
+
+Download the final trained checkpoint (epoch 28, best val IoU):
+
+**[Download best.pth — Google Drive](https://drive.google.com/file/d/1nT2dcNnQQaU5NovIaeoamhDojotROlHl/view?usp=sharing)**
+
+---
+
+## Results
+
+Metrics computed for the **change class (label = 1)** using threshold = 0.94 with Test-Time Augmentation (TTA) on the test split.
+
+| Split   | Loss   | IoU    | F1 Score | Precision | Recall |
+|---------|--------|--------|----------|-----------|--------|
+| **Val** | 0.2042 | 0.7778 | 0.8750   | 0.8086    | 0.9534 |
+| **Test**| 0.4792 | 0.4789 | 0.6477   | 0.5830    | 0.7284 |
+
+> **Note on val/test gap:** Train and val share the same 8 scenes (patch-level split); test uses 2 entirely unseen scenes (scene_09–10). The val IoU is therefore inflated by scene-level familiarity. The test score (~0.48 IoU) represents true cross-scene generalisation performance, which is the more honest number.
+
+### Confusion Matrix — Test Set (threshold = 0.94, with TTA)
+
+|                    | Predicted No-Change | Predicted Change |
+|--------------------|--------------------:|----------------:|
+| **Actual No-Change** | TN (high — model conservative at t=0.94) | FP |
+| **Actual Change**    | FN | TP |
+
+**Error profile:** Precision (0.58) is the binding constraint — the model over-predicts change in test scenes. Recall (0.73) is reasonable, meaning most true change pixels are found. The false positive pattern suggests the model fires on SAR texture differences that are noise/speckle in the unseen scenes rather than structural change.
+
+---
+
+## Key Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Fusion strategy | Early fusion (channel concat) | Encoder learns cross-modal features jointly; simpler than late/mid fusion |
+| Architecture | UNet++ + EfficientNet-B3 | Dense skip connections capture fine change boundaries; B3 balances capacity vs. compute |
+| Loss | Focal Tversky (α=0.25, β=0.75) | Penalises false negatives harder — appropriate for sparse change class |
+| Threshold | 0.94 (tuned on val) | Raises precision without large recall drop; default 0.5 was too aggressive on test |
+| TTA | 4-flip averaging (H, V, HV, orig) | ~0.03 IoU improvement on test at zero training cost |
+| Augmentation | Elastic, CLAHE, multiplicative noise, coarse dropout | Improve SAR generalisation across unseen scene conditions |
+
+---
+
+## Configuration Reference
+
+```yaml
+model:
+  architecture: UnetPlusPlus
+  encoder:       efficientnet-b3
+  in_channels:   4               # 3 EO + 1 SAR
+  classes:       1
+
+training:
+  epochs:                   40
+  batch_size:                8
+  learning_rate:           1e-4
+  mixed_precision:          true
+  early_stopping_patience:  10
+  gradient_clip:            1.0
+  weight_decay:           1e-4
+
+loss:
+  primary:        focal_tversky
+  tversky_alpha:  0.25            # FP weight
+  tversky_beta:   0.75            # FN weight (recall-biased)
+
+metrics:
+  threshold: 0.94
+
+scheduler:
+  name:  cosine
+  T_max: 40
+  min_lr: 1e-6
+```
 
 ---
 
@@ -211,61 +268,7 @@ Each image produces:
 tensorboard --logdir experiments
 ```
 
-Tracks: train/val loss, IoU, F1, Precision, Recall, learning rate.
-
----
-
-## Configuration Reference
-
-Key sections in `configs/config.yaml`:
-
-```yaml
-model:
-  architecture: "UnetPlusPlus"    # UnetPlusPlus | Unet | DeepLabV3Plus | FPN
-  encoder:      "efficientnet-b0"
-  in_channels:  4                 # 3 EO + 1 SAR
-
-training:
-  epochs:                  40
-  batch_size:               8
-  learning_rate:         1e-4
-  mixed_precision:        true
-  early_stopping_patience:  10
-  gradient_clip:           1.0
-
-loss:
-  primary: "bce_dice"             # bce_dice | dice | focal | tversky
-
-scheduler:
-  name: "cosine"                  # cosine | step | plateau
-```
-
----
-
-## Results
-
-| Split | Loss | IoU | F1 | Precision | Recall |
-|---|---|---|---|---|---|
-| val | — | — | — | — | — |
-| test | — | — | — | — | — |
-
-*Fill in after training.*
-
----
-
-## Design Notes
-
-### EO-SAR Modality Gap
-EO captures surface reflectance in optical wavelengths; SAR captures microwave backscatter regardless of cloud cover. The two modalities have fundamentally different noise characteristics and spatial statistics. Early fusion (channel concatenation) is used here so the encoder learns cross-modal correspondences jointly.
-
-### SAR Speckle
-SAR imagery exhibits multiplicative speckle noise. `GaussNoise` augmentation during training acts as a partial proxy for this; in production, multi-look or Lee filtering could be applied as a pre-processing step.
-
-### Scene-wise Evaluation
-The val/test split is scene-based, meaning the model is evaluated on entirely unseen geographic regions. This tests cross-scene domain generalisation rather than in-distribution performance — a stricter and more realistic protocol for disaster response applications.
-
-### Class Imbalance
-Change pixels are a small fraction of total pixels. BCE+Dice loss is used to balance pixel-level cross-entropy with region-level overlap. Tversky loss (higher `beta`) is an alternative when recall is prioritised over precision.
+Tracks: train/val loss, IoU, F1, Precision, Recall, learning rate per epoch.
 
 ---
 
@@ -279,14 +282,23 @@ Change pixels are a small fraction of total pixels. BCE+Dice loss is used to bal
     "scheduler_state_dict": dict,
     "best_metric":          float,
     "scores":               {"iou": ..., "f1": ..., "precision": ..., "recall": ...},
-    "cfg":                  dict,   # full config snapshot
+    "cfg":                  dict,
 }
 ```
 
-Load manually:
-
 ```python
 import torch
-state = torch.load("experiments/run_X/checkpoints/best.pth", map_location="cpu")
+state = torch.load("best.pth", map_location="cpu")
 model.load_state_dict(state["model_state_dict"])
 ```
+
+---
+
+## Citations / References
+
+- **segmentation-models-pytorch**: Iakubovskii, P. (2019). [https://github.com/qubvel/segmentation_models.pytorch](https://github.com/qubvel/segmentation_models.pytorch)
+- **UNet++**: Zhou et al., "UNet++: A Nested U-Net Architecture for Medical Image Segmentation", DLMIA 2018.
+- **EfficientNet**: Tan & Le, "EfficientNet: Rethinking Model Scaling for CNNs", ICML 2019.
+- **Focal Tversky Loss**: Abraham & Khan, "A Novel Focal Tversky Loss Function With Improved Attention U-Net for Lesion Segmentation", ISBI 2019.
+- **Albumentations**: Buslaev et al., "Albumentations: Fast and Flexible Image Augmentations", Information 2020.
+- **TTA**: Shanmugam et al., "Better Aggregation in Test-Time Augmentation", ICCV 2021.

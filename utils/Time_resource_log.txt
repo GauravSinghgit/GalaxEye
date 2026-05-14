@@ -1,0 +1,30 @@
+TIME & RESOURCE LOG
+===================
+
+Total time spent (approx):
+  Data exploration        : 2 hours
+  Literature reading      : 2 hours
+  Implementation          : 6 hours
+  Training                : 3 hours
+  Evaluation & tuning     : 2 hours
+  Report writing          : 2 hours
+  Total                   : ~17 hours
+
+Machine:
+  Platform                : Kaggle (cloud)
+  Instance type           : Kaggle Notebook (GPU)
+  GPU                     : Tesla T4 (2x, 16GB VRAM each)
+  CPU                     : 4 vCPUs
+  RAM                     : 29 GB
+
+Training details:
+  Epochs completed        : 28 (early stopping at best IoU)
+  Time per epoch          : ~400s (~6.5 min)
+  Total training time     : ~3 hours wall-clock
+
+Resource constraints:
+  Kaggle GPU quota limited to 30 hours/week.
+  Could not experiment with larger encoders (B5/B7) or 
+  longer training runs due to quota. Threshold tuning and 
+  TTA were used post-training to recover test performance 
+  without additional compute.

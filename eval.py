@@ -92,21 +92,62 @@ def main():
     all_imgs, all_masks, all_preds, all_fnames = [], [], [], []
 
     t0 = time.time()
+    # ── TTA helper ────────────────────────────────────────────────────────────
+    def _tta_predict(imgs):
+        """Average predictions over 4 flip variants for better generalisation."""
+        variants = [
+            imgs,                                           # original
+            torch.flip(imgs, dims=[3]),                     # horizontal flip
+            torch.flip(imgs, dims=[2]),                     # vertical flip
+            torch.flip(imgs, dims=[2, 3]),                  # both flips
+        ]
+        probs_list = []
+        for v in variants:
+            if use_amp:
+                with autocast():
+                    logit = model(v)
+            else:
+                logit = model(v)
+            probs_list.append(torch.sigmoid(logit))
+
+        # undo flips before averaging
+        probs_list[1] = torch.flip(probs_list[1], dims=[3])
+        probs_list[2] = torch.flip(probs_list[2], dims=[2])
+        probs_list[3] = torch.flip(probs_list[3], dims=[2, 3])
+
+        return torch.stack(probs_list, dim=0).mean(dim=0)   # (B,1,H,W)
+
+    # ── Evaluation loop (TTA on test, single-pass on val) ─────────────────────
+    use_tta = (args.split == "test")
+
     with torch.no_grad():
         for images, masks, fnames in loader:
             images = images.to(device, non_blocking=True)
             masks  = masks.to(device, non_blocking=True)
 
-            if use_amp:
-                with autocast():
+            if use_tta:
+                # TTA: no loss needed; use averaged probs directly
+                avg_probs = _tta_predict(images)
+                # approximate loss for reporting
+                if use_amp:
+                    with autocast():
+                        logits = model(images)
+                        loss   = criterion(logits, masks)
+                else:
                     logits = model(images)
                     loss   = criterion(logits, masks)
+                preds = (avg_probs > threshold).float()
             else:
-                logits = model(images)
-                loss   = criterion(logits, masks)
+                if use_amp:
+                    with autocast():
+                        logits = model(images)
+                        loss   = criterion(logits, masks)
+                else:
+                    logits = model(images)
+                    loss   = criterion(logits, masks)
+                preds = (torch.sigmoid(logits) > threshold).float()
 
             total_loss += loss.item()
-            preds = (torch.sigmoid(logits) > threshold).float()
             metrics_tracker.update(preds, masks)
 
             all_imgs.append(images.cpu())
