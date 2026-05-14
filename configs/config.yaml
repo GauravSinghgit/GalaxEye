@@ -1,0 +1,69 @@
+augmentation:
+  train:
+    brightness_contrast: true
+    brightness_limit: 0.2
+    contrast_limit: 0.2
+    gaussian_noise: true
+    horizontal_flip: true
+    noise_var_limit:
+    - 10
+    - 50
+    rotate90: true
+    vertical_flip: true
+  val:
+    horizontal_flip: false
+checkpointing:
+  mode: max
+  monitor: iou
+  save_best: true
+  save_latest: true
+data:
+  image_size: 512
+  num_workers: 4
+  pin_memory: true
+  root_dir: /kaggle/input/datasets/gauravsingh101/galaxyeye/Galaxy Data
+logging:
+  csv: true
+  log_interval: 20
+  save_vis_every: 5
+  tensorboard: true
+loss:
+  bce_weight: 0.5
+  dice_weight: 0.5
+  focal_alpha: 0.25
+  focal_gamma: 2.0
+  primary: bce_dice
+  tversky_alpha: 0.3
+  tversky_beta: 0.7
+metrics:
+  threshold: 0.5
+model:
+  activation: null
+  architecture: UnetPlusPlus
+  classes: 1
+  encoder: efficientnet-b0
+  encoder_weights: imagenet
+  in_channels: 4
+optimizer:
+  name: adamw
+project:
+  experiment_dir: /kaggle/working/Galaxy-AI/experiments
+  name: EO-SAR-ChangeDetection
+  seed: 42
+scheduler:
+  T_max: 40
+  factor: 0.5
+  gamma: 0.5
+  min_lr: 1.0e-06
+  name: cosine
+  patience: 5
+  step_size: 10
+training:
+  batch_size: 8
+  early_stopping_patience: 10
+  epochs: 40
+  gradient_clip: 1.0
+  learning_rate: 0.0001
+  mixed_precision: true
+  num_workers: 2
+  weight_decay: 0.0001
