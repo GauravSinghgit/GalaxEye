@@ -208,7 +208,7 @@ Metrics computed for the **change class (label = 1)** using threshold = 0.94 wit
 
 |                    | Predicted No-Change | Predicted Change |
 |--------------------|--------------------:|----------------:|
-| **Actual No-Change** | TN (high — model conservative at t=0.94) | FP |
+| **Actual No-Change** | TN (high — model conservative at t=0.99) | FP |
 | **Actual Change**    | FN | TP |
 
 **Error profile:** Precision (0.61) is the binding constraint — the model over-predicts change in test scenes. Recall (0.70) is reasonable, meaning most true change pixels are found. The false positive pattern suggests the model fires on SAR texture differences that are noise/speckle in the unseen scenes rather than structural change.
@@ -252,7 +252,7 @@ loss:
   tversky_beta:   0.75            # FN weight (recall-biased)
 
 metrics:
-  threshold: 0.94
+  threshold: 0.99
 
 scheduler:
   name:  cosine
