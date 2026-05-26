@@ -199,19 +199,19 @@ Metrics computed for the **change class (label = 1)** using threshold = 0.94 wit
 
 | Split   | Loss   | IoU    | F1 Score | Precision | Recall |
 |---------|--------|--------|----------|-----------|--------|
-| **Val** | 0.2042 | 0.7778 | 0.8750   | 0.8086    | 0.9534 |
-| **Test**| 0.4792 | 0.4789 | 0.6477   | 0.5830    | 0.7284 |
+| **Val** | 0.2042 | 0.7990 | 0.8830   | 0.8330    | 0.9390 |
+| **Test**| 0.4792 | 0.4900 | 0.6580   | 0.6150    | 0.7060 |
 
 > **Note on val/test gap:** Train and val share the same 8 scenes (patch-level split); test uses 2 entirely unseen scenes (scene_09–10). The val IoU is therefore inflated by scene-level familiarity. The test score (~0.48 IoU) represents true cross-scene generalisation performance, which is the more honest number.
 
-### Confusion Matrix — Test Set (threshold = 0.94, with TTA)
+### Confusion Matrix — Test Set (threshold = 0.99, with TTA)
 
 |                    | Predicted No-Change | Predicted Change |
 |--------------------|--------------------:|----------------:|
 | **Actual No-Change** | TN (high — model conservative at t=0.94) | FP |
 | **Actual Change**    | FN | TP |
 
-**Error profile:** Precision (0.58) is the binding constraint — the model over-predicts change in test scenes. Recall (0.73) is reasonable, meaning most true change pixels are found. The false positive pattern suggests the model fires on SAR texture differences that are noise/speckle in the unseen scenes rather than structural change.
+**Error profile:** Precision (0.61) is the binding constraint — the model over-predicts change in test scenes. Recall (0.70) is reasonable, meaning most true change pixels are found. The false positive pattern suggests the model fires on SAR texture differences that are noise/speckle in the unseen scenes rather than structural change.
 
 ---
 

@@ -46,7 +46,7 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
-    with open(args.config) as f:
+    with open(args.config, encoding='utf-8') as f:
         cfg = yaml.safe_load(f)
 
     set_seed(cfg["project"]["seed"])

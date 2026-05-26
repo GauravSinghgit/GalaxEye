@@ -47,5 +47,5 @@ inference_output/
 *.pt
 *.ckpt
 
-# Claude worktrees
-.claude/
+mindmap.html
+Gaurav_Singh_GalaxEye_Report.pdf

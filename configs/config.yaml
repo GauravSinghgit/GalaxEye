@@ -1,19 +1,19 @@
 augmentation:
   train:
     brightness_contrast: true
-    brightness_limit: 0.25       # ← was 0.2
-    contrast_limit: 0.25         # ← was 0.2
+    brightness_limit: 0.25
+    contrast_limit: 0.25
     gaussian_noise: true
     horizontal_flip: true
     noise_var_limit:
     - 10
-    - 65                         # ← was 50, slightly wider
+    - 65
     rotate90: true
     vertical_flip: true
-    elastic_transform: true      # ← new flag
-    multiplicative_noise: true   # ← new flag
-    clahe: true                  # ← new flag
-    coarse_dropout: true         # ← new flag
+    elastic_transform: true
+    multiplicative_noise: true
+    clahe: true
+    coarse_dropout: true
   val:
     horizontal_flip: false
 checkpointing:
@@ -23,9 +23,10 @@ checkpointing:
   save_latest: true
 data:
   image_size: 512
-  num_workers: 4
+  num_workers: 0
   pin_memory: true
-  root_dir: /kaggle/input/datasets/gauravsingh101/galaxyeye/Galaxy Data
+  sar_log_norm: false
+  root_dir: C:\Users\gaura\OneDrive\Desktop\Galaxy Data
 logging:
   csv: true
   log_interval: 20
@@ -36,11 +37,11 @@ loss:
   dice_weight: 0.5
   focal_alpha: 0.25
   focal_gamma: 2.0
-  primary: focal_tversky   # ← changed: penalises FN harder, better for unseen scenes
-  tversky_alpha: 0.25      # ← FP weight (lowered)
-  tversky_beta: 0.75       # ← FN weight (raised) — prefers recall over precision
+  primary: focal_tversky
+  tversky_alpha: 0.25
+  tversky_beta: 0.75
 metrics:
-  threshold: 0.94
+  threshold: 0.99
 model:
   activation: null
   architecture: UnetPlusPlus
@@ -51,7 +52,7 @@ model:
 optimizer:
   name: adamw
 project:
-  experiment_dir: /kaggle/working/Galaxy-AI/experiments
+  experiment_dir: experiments
   name: EO-SAR-ChangeDetection
   seed: 42
 scheduler:
@@ -69,5 +70,5 @@ training:
   gradient_clip: 1.0
   learning_rate: 0.0001
   mixed_precision: true
-  num_workers: 2
+  num_workers: 0
   weight_decay: 0.0001
